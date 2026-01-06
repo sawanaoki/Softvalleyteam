@@ -96,7 +96,8 @@ def generate_schedule():
         matches = create_matches(
             st.session_state.male_count, 
             st.session_state.female_count, 
-            st.session_state.match_count
+            st.session_state.match_count,
+            st.session_state.get('mode', 'balanced')
         )
         st.session_state.matches = matches
         st.session_state.current_match_index = 0
@@ -129,6 +130,21 @@ with st.container():
         st.number_input("女性の人数", min_value=0, value=6, key="female_count", help="最低4名", on_change=clear_schedule)
     with col3:
         st.number_input("試合数", min_value=1, value=5, key="match_count", on_change=clear_schedule)
+
+    mode_map = {
+        "バランス（推奨）": "balanced",
+        "ペア固定（チーム維持）": "fixed_pairs",
+        "完全ランダム": "random"
+    }
+    
+    selected_mode_label = st.selectbox(
+        "モード選択", 
+        options=list(mode_map.keys()),
+        index=0,
+        help="バランス: 均等にプレイ・ペア替え\nペア固定: ペアを固定してローテーション\n完全ランダム: 毎回ランダムに決定",
+        on_change=clear_schedule
+    )
+    st.session_state.mode = mode_map[selected_mode_label]
 
     st.button("🔀 試合順を作成", on_click=generate_schedule)
     st.markdown("</div>", unsafe_allow_html=True)

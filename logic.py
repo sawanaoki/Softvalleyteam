@@ -1,10 +1,15 @@
 import math
 
-def create_matches(males_count, females_count, num_matches):
+def create_matches(males_count, females_count, num_matches, mode="balanced"):
     """
     Generate match schedule based on the number of players and matches.
-    Ported from React implementation.
     """
+    if mode == "random":
+        return create_random_matches(males_count, females_count, num_matches)
+    elif mode == "fixed_pairs":
+        return create_fixed_pair_matches(males_count, females_count, num_matches)
+        
+    # Default Balanced Mode
     males = int(males_count)
     females = int(females_count)
     matches_target = int(num_matches)
@@ -118,6 +123,193 @@ def create_matches(males_count, females_count, num_matches):
     return matches
 
 
+def has_same_id_collision(team_males, team_females):
+    """
+    Check if there is a collision where Male N and Female N are on the same team.
+    team_males: list of 0-based indices
+    team_females: list of 0-based indices
+    """
+    return not set(team_males).isdisjoint(set(team_females))
+
+
+def create_random_matches(males_count, females_count, num_matches):
+    """
+    Generate completely random matches.
+    """
+    import random
+    males = int(males_count)
+    females = int(females_count)
+    
+    matches = []
+    
+    # 0-indexed lists of all players
+    all_males = list(range(males))
+    all_females = list(range(females))
+    
+    for match_num in range(num_matches):
+        team1 = {}
+        team2 = {}
+        waiting_males = []
+        waiting_females = []
+        
+        # Try to find a configuration without ID collisions
+        # Retry up to 20 times, then accept whatever to avoid infinite loop
+        found_valid = False
+        
+        for _ in range(20):
+            random.shuffle(all_males)
+            random.shuffle(all_females)
+            
+            selected_males = all_males[:4]
+            selected_females = all_females[:4]
+            
+            # Temporary teams check
+            t1_m = [selected_males[0], selected_males[1]]
+            t1_f = [selected_females[0], selected_females[1]]
+            t2_m = [selected_males[2], selected_males[3]]
+            t2_f = [selected_females[2], selected_females[3]]
+            
+            if not has_same_id_collision(t1_m, t1_f) and not has_same_id_collision(t2_m, t2_f):
+                found_valid = True
+                break
+        
+        # If not found valid after retries, use the last shuffled result
+        
+        selected_males = all_males[:4]
+        selected_females = all_females[:4]
+        
+        waiting_males = [m + 1 for m in all_males[4:]]
+        waiting_females = [f + 1 for f in all_females[4:]]
+        
+        team1 = {
+            'males': [selected_males[0] + 1, selected_males[1] + 1],
+            'females': [selected_females[0] + 1, selected_females[1] + 1]
+        }
+        
+        team2 = {
+            'males': [selected_males[2] + 1, selected_males[3] + 1],
+            'females': [selected_females[2] + 1, selected_females[3] + 1]
+        }
+        
+        # Sort for better display
+        team1['males'].sort()
+        team1['females'].sort()
+        team2['males'].sort()
+        team2['females'].sort()
+        waiting_males.sort()
+        waiting_females.sort()
+        
+        matches.append({
+            'match_number': match_num + 1,
+            'team1': team1,
+            'team2': team2,
+            'waiting': {
+                'males': waiting_males,
+                'females': waiting_females
+            }
+        })
+        
+    return matches
+
+
+def create_fixed_pair_matches(males_count, females_count, num_matches):
+    """
+    Generate matches where pairs are fixed (e.g., M1-M2, M3-M4).
+    """
+    import math
+    
+    males = int(males_count)
+    females = int(females_count)
+    matches_target = int(num_matches)
+    
+    # Define Pairs (0-indexed)
+    # Pair i: (2*i, 2*i + 1)
+    
+    male_units = []
+    for i in range(0, males, 2):
+        if i + 1 < males:
+            male_units.append([i, i+1])
+        else:
+            male_units.append([i]) # Solo
+            
+    female_units = []
+    for i in range(0, females, 2):
+        if i + 1 < females:
+            female_units.append([i, i+1])
+        else:
+            female_units.append([i])
+            
+    # Track plays per UNIT
+    male_unit_plays = [0] * len(male_units)
+    female_unit_plays = [0] * len(female_units)
+    
+    matches = []
+    
+    for match_num in range(matches_target):
+        # 1. Sort units by play count
+        sorted_m_units = sorted(range(len(male_units)), key=lambda k: male_unit_plays[k])
+        sorted_f_units = sorted(range(len(female_units)), key=lambda k: female_unit_plays[k])
+        
+        selected_m_unit_indices = sorted_m_units[:2]
+        selected_f_unit_indices = sorted_f_units[:2]
+        
+        # Update play stats
+        for u_idx in selected_m_unit_indices:
+            male_unit_plays[u_idx] += 1
+        for u_idx in selected_f_unit_indices:
+            female_unit_plays[u_idx] += 1
+            
+        # Form teams candidates
+        m_u1 = male_units[selected_m_unit_indices[0]]
+        m_u2 = male_units[selected_m_unit_indices[1]]
+        f_u1 = female_units[selected_f_unit_indices[0]]
+        f_u2 = female_units[selected_f_unit_indices[1]]
+        
+        # Check collision for standard pairing: T1=(M1, F1), T2=(M2, F2)
+        collision_std = has_same_id_collision(m_u1, f_u1) or has_same_id_collision(m_u2, f_u2)
+        
+        # Check collision for swapped pairing: T1=(M1, F2), T2=(M2, F1)
+        collision_swap = has_same_id_collision(m_u1, f_u2) or has_same_id_collision(m_u2, f_u1)
+        
+        # Prefer swap if it resolves collision
+        if collision_std and not collision_swap:
+            # Swap
+            final_f_u1 = f_u2
+            final_f_u2 = f_u1
+        else:
+            final_f_u1 = f_u1
+            final_f_u2 = f_u2
+        
+        # Convert to 1-based
+        team1 = {
+            'males': [x + 1 for x in m_u1],
+            'females': [x + 1 for x in final_f_u1]
+        }
+        team2 = {
+            'males': [x + 1 for x in m_u2],
+            'females': [x + 1 for x in final_f_u2]
+        }
+        
+        # Waiting
+        selected_m_flat = m_u1 + m_u2
+        selected_f_flat = f_u1 + f_u2 # Original selection sets are same regardless of swap
+        
+        waiting_males = [i + 1 for i in range(males) if i not in selected_m_flat]
+        waiting_females = [i + 1 for i in range(females) if i not in selected_f_flat]
+        
+        matches.append({
+            'match_number': match_num + 1,
+            'team1': team1,
+            'team2': team2,
+            'waiting': {
+                'males': waiting_males,
+                'females': waiting_females
+            }
+        })
+        
+    return matches
+
+
 def find_best_team_split(males, females, male_history, female_history):
     """
     Find the split of 4 players into 2 pairs (2 vs 2) that minimizes repeat pairs.
@@ -144,20 +336,59 @@ def find_best_team_split(males, females, male_history, female_history):
 
     for m_split in male_splits:
         for f_split in female_splits:
-            # Score = sum of history counts for all pairs in this configuration
-            # m_split[0] is pair 1 (team 1 males), m_split[1] is pair 2 (team 2 males)
-            score = (
+            # Option 1: T1(M1, F1), T2(M2, F2)
+            score1 = (
                 male_history[m_split[0][0]][m_split[0][1]] +
                 male_history[m_split[1][0]][m_split[1][1]] +
                 female_history[f_split[0][0]][f_split[0][1]] +
                 female_history[f_split[1][0]][f_split[1][1]]
             )
-
-            if score < best_score:
-                best_score = score
+            
+            if has_same_id_collision(m_split[0], f_split[0]):
+                score1 += 10000
+            if has_same_id_collision(m_split[1], f_split[1]):
+                score1 += 10000
+                
+            if score1 < best_score:
+                best_score = score1
                 best_teams = {
                     'team1': {'males': m_split[0], 'females': f_split[0]},
                     'team2': {'males': m_split[1], 'females': f_split[1]}
+                }
+
+            # Option 2: T1(M1, F2), T2(M2, F1)
+            # History score is same for pairs, but team composition is different?
+            # Actually, "score" in original code was just sum of PAIR history.
+            # Does team composition matter for pair history?
+            # Original code: score = male_pair_hist + female_pair_hist.
+            # It didn't account for mixed history (M-F history).
+            # So the base score is IDENTICAL for Option 1 and Option 2.
+            # But the PENALTY might differ.
+            
+            score2 = score1 # Base score is same
+            
+            # Reset penalty logic for Option 2
+            # Remove any penalty added to score1? No, score1 is modified.
+            # Re-calculate clean score from scratch is safer.
+            
+            clean_score = (
+                male_history[m_split[0][0]][m_split[0][1]] +
+                male_history[m_split[1][0]][m_split[1][1]] +
+                female_history[f_split[0][0]][f_split[0][1]] +
+                female_history[f_split[1][0]][f_split[1][1]]
+            )
+            
+            score2 = clean_score
+            if has_same_id_collision(m_split[0], f_split[1]):
+                score2 += 10000
+            if has_same_id_collision(m_split[1], f_split[0]):
+                score2 += 10000
+                
+            if score2 < best_score:
+                best_score = score2
+                best_teams = {
+                    'team1': {'males': m_split[0], 'females': f_split[1]},
+                    'team2': {'males': m_split[1], 'females': f_split[0]}
                 }
     
     return best_teams
