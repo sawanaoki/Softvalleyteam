@@ -97,7 +97,10 @@ def generate_schedule():
             st.session_state.male_count, 
             st.session_state.female_count, 
             st.session_state.match_count,
-            st.session_state.get('mode', 'balanced')
+            st.session_state.get('mode', 'balanced'),
+            st.session_state.get('late_male_count', 0),
+            st.session_state.get('late_female_count', 0),
+            st.session_state.get('late_start_match', 1)
         )
         st.session_state.matches = matches
         st.session_state.current_match_index = 0
@@ -146,6 +149,15 @@ with st.container():
     )
     st.session_state.mode = mode_map[selected_mode_label]
 
+    with st.expander("⏱️ 途中参加の設定 (オプション)"):
+        col_l1, col_l2, col_l3 = st.columns(3)
+        with col_l1:
+            st.number_input("途中参加 (男)", min_value=0, value=0, key="late_male_count", on_change=clear_schedule)
+        with col_l2:
+            st.number_input("途中参加 (女)", min_value=0, value=0, key="late_female_count", on_change=clear_schedule)
+        with col_l3:
+            st.number_input("何試合目から？", min_value=1, value=1, key="late_start_match", on_change=clear_schedule)
+
     st.button("🔀 試合順を作成", on_click=generate_schedule)
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -155,11 +167,14 @@ if st.session_state.matches:
     match = st.session_state.matches[current_idx]
     
     # Calculate Play Stats
+    total_males = st.session_state.male_count + st.session_state.get('late_male_count', 0)
+    total_females = st.session_state.female_count + st.session_state.get('late_female_count', 0)
+    
     stats = get_play_stats_snapshot(
         st.session_state.matches, 
         current_idx, 
-        st.session_state.male_count, 
-        st.session_state.female_count
+        total_males, 
+        total_females
     )
 
     # Navigation

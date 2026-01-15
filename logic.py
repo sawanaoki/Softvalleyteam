@@ -1,50 +1,63 @@
 import math
 
-def create_matches(males_count, females_count, num_matches, mode="balanced"):
+def create_matches(males_count, females_count, num_matches, mode="balanced", late_males=0, late_females=0, late_match_start=1):
     """
     Generate match schedule based on the number of players and matches.
     """
     if mode == "random":
+        # 簡易化のため一旦ランダムモードは途中参加非対応（既存の引数で呼び出し）
         return create_random_matches(males_count, females_count, num_matches)
     elif mode == "fixed_pairs":
+        # 簡易化のため一旦ペア固定モードも途中参加非対応
         return create_fixed_pair_matches(males_count, females_count, num_matches)
         
     # Default Balanced Mode
-    males = int(males_count)
-    females = int(females_count)
+    base_males = int(males_count)
+    base_females = int(females_count)
+    extra_males = int(late_males)
+    extra_females = int(late_females)
+    total_males = base_males + extra_males
+    total_females = base_females + extra_females
     matches_target = int(num_matches)
+    start_match_idx = int(late_match_start) - 1
 
-    if males < 4 or females < 4:
-        raise ValueError('男性4名以上、女性4名以上を入力してください。')
+    if base_males < 4 or base_females < 4:
+        raise ValueError('初期メンバーとして男性4名以上、女性4名以上を入力してください。')
     
     if matches_target < 1:
         raise ValueError('試合数を1以上で入力してください。')
 
-    if males > 1000 or females > 1000 or matches_target > 1000:
+    if total_males > 1000 or total_females > 1000 or matches_target > 1000:
        raise ValueError('人数または試合数が大きすぎます。')
 
     # Status tracking
-    # 0-indexed internally, but IDs will be 1-indexed for display
-    male_play_count = [0] * males
-    female_play_count = [0] * females
-    male_last_played = [-2] * males
-    female_last_played = [-2] * females
+    male_play_count = [0] * total_males
+    female_play_count = [0] * total_females
+    male_last_played = [-2] * total_males
+    female_last_played = [-2] * total_females
+    
+    # Each player's start match index (0-indexed)
+    male_start_indices = [0] * base_males + [start_match_idx] * extra_males
+    female_start_indices = [0] * base_females + [start_match_idx] * extra_females
 
-    # Pair history tracking (1-indexed keys as in original code logic, or simplified to 0-indexed)
-    # Using 0-indexed for Python implementation simplicity, will convert to 1-based for IDs later.
-    male_pair_history = [[0] * males for _ in range(males)]
-    female_pair_history = [[0] * females for _ in range(females)]
+    # Pair history tracking
+    male_pair_history = [[0] * total_males for _ in range(total_males)]
+    female_pair_history = [[0] * total_females for _ in range(total_females)]
 
     matches = []
 
     for match_num in range(matches_target):
         # 1. Select players
         # Priority: play_count * 100 + (match_num - last_played)
-        # Smaller priority is better
+        # For late joiners who haven't arrived yet, set priority very high
         
         available_males = []
-        for i in range(males):
-            priority = male_play_count[i] * 100 + (match_num - male_last_played[i])
+        for i in range(total_males):
+            if match_num < male_start_indices[i]:
+                priority = 1000000 # Joined later
+            else:
+                priority = male_play_count[i] * 100 + (match_num - male_last_played[i])
+            
             available_males.append({
                 'id': i,
                 'play_count': male_play_count[i],
@@ -52,13 +65,18 @@ def create_matches(males_count, females_count, num_matches, mode="balanced"):
                 'priority': priority
             })
         
-        # Sort by priority (asc)
         available_males.sort(key=lambda x: x['priority'])
+        if available_males[3]['priority'] >= 1000000:
+             raise ValueError(f'第{match_num + 1}試合時点で参加可能な男性が不足しています（最低4名必要）。')
         selected_males_indices = [m['id'] for m in available_males[:4]]
         
         available_females = []
-        for i in range(females):
-            priority = female_play_count[i] * 100 + (match_num - female_last_played[i])
+        for i in range(total_females):
+            if match_num < female_start_indices[i]:
+                priority = 1000000
+            else:
+                priority = female_play_count[i] * 100 + (match_num - female_last_played[i])
+                
             available_females.append({
                 'id': i,
                 'play_count': female_play_count[i],
@@ -67,6 +85,8 @@ def create_matches(males_count, females_count, num_matches, mode="balanced"):
             })
             
         available_females.sort(key=lambda x: x['priority'])
+        if available_females[3]['priority'] >= 1000000:
+             raise ValueError(f'第{match_num + 1}試合時点で参加可能な女性が不足しています（最低4名必要）。')
         selected_females_indices = [f['id'] for f in available_females[:4]]
 
         # 2. Find best team split
@@ -97,8 +117,8 @@ def create_matches(males_count, females_count, num_matches, mode="balanced"):
         update_pair_history(best_teams['team2']['females'], female_pair_history)
 
         # 4. Determine waiting members
-        waiting_males = [i + 1 for i in range(males) if i not in selected_males_indices]
-        waiting_females = [i + 1 for i in range(females) if i not in selected_females_indices]
+        waiting_males = [i + 1 for i in range(total_males) if i not in selected_males_indices and match_num >= male_start_indices[i]]
+        waiting_females = [i + 1 for i in range(total_females) if i not in selected_females_indices and match_num >= female_start_indices[i]]
 
         # Convert 0-indexed IDs to 1-indexed for display
         team1_display = {
